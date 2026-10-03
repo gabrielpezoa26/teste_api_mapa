@@ -1,0 +1,10 @@
+services:
+  app:
+    build: .
+    volumes:
+      - .:/work   # o script cria data/ aqui dentro
+    environment:
+      BBOX: "-24.05,-47.10,-23.00,-46.20"
+      GAP_M: "30"
+      NAME_REGEX: "trilha|caminho|pico|cachoeira|pedra"
+      REFRESH: "0"
