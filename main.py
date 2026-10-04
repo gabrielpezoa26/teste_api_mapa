@@ -1,5 +1,8 @@
 """Overpass -> junta ways por nome -> ordena -> elevacao -> dificuldade -> Excel + GeoJSON.
 
+Objetivo: base BRUTA. Nada e descartado na coleta (todos os ways nomeados de path/footway/track);
+regex de nome, tamanho etc. viram colunas-marcador para filtrar depois.
+
 Juncao de ways do mesmo nome:
   1. por node compartilhado (conexao exata do OSM)
   2. por proximidade das pontas (GAP_M metros)
@@ -14,6 +17,7 @@ import sys
 import time
 import unicodedata
 from collections import defaultdict
+from datetime import datetime, timezone
 from pathlib import Path
 
 import requests
@@ -23,11 +27,13 @@ from openpyxl.utils import get_column_letter
 
 BBOX = os.getenv("BBOX", "-24.05,-47.10,-23.00,-46.20")
 GAP_M = float(os.getenv("GAP_M", "30"))
-NAME_REGEX = os.getenv("NAME_REGEX", "trilha|caminho|pico|cachoeira|pedra")
+NAME_REGEX = os.getenv("NAME_REGEX", "trilha|caminho|pico|cachoeira|pedra")  # so MARCA (nome_bate_regex)
+NAME_RE = re.compile(NAME_REGEX, re.IGNORECASE) if NAME_REGEX else None
+HIGHWAYS = [h.strip() for h in os.getenv("HIGHWAYS", "path,footway,track").split(",") if h.strip()]
 REFRESH = os.getenv("REFRESH", "0") == "1"
 ELEVATION = os.getenv("ELEVATION", "1") == "1"
 STEP_M = float(os.getenv("STEP_M", "50"))
-MIN_KM_ELEV = float(os.getenv("MIN_KM_ELEV", "0.5"))
+MIN_KM_ELEV = float(os.getenv("MIN_KM_ELEV", "0"))
 
 MAX_SAMPLES = 400      # maximo de pontos de elevacao por trilha
 SMOOTH_RADIUS = 2      # media movel de 5 pontos
@@ -36,7 +42,7 @@ CIRCULAR_M = 100.0     # inicio ~ fim => circular
 EASY_MAX, MODERATE_MAX = 6.0, 14.0   # limiares de esforco (km + ganho_m/100)
 
 DATA = Path("data")
-RAW = DATA / "overpass_raw.json"
+RAW_GLOB = "overpass_raw_*.json"  # um arquivo por extracao: overpass_raw_AAAAMMDD_HHMMSS.json
 ELEV_CACHE = DATA / "elevation_cache.json"
 OUT = DATA / "trilhas.xlsx"
 OUT_GEOJSON = DATA / "trilhas.geojson"
@@ -70,44 +76,75 @@ atexit.register(fix_owner)
 
 
 # ---------- 1. Overpass ----------
-def build_query() -> str:
-    name_filter = f'[name~"{NAME_REGEX}",i]' if NAME_REGEX else "[name]"
+def build_query(highway: str) -> str:
     return (
         "[out:json][timeout:180];\n"
-        f'way[highway~"^(path|footway|track)$"]{name_filter}({BBOX});\n'
+        f'way[highway="{highway}"][name]({BBOX});\n'
         "out meta geom;"  # nodes + coordenadas + version/timestamp
     )
 
 
-def fetch() -> dict:
-    DATA.mkdir(exist_ok=True)
-    if RAW.exists() and not REFRESH:
-        data = json.loads(RAW.read_text(encoding="utf-8"))
-        ways = [e for e in data.get("elements", []) if e.get("type") == "way"]
-        if ways and "timestamp" in ways[0]:
-            print(f"Usando cache {RAW} (REFRESH=1 para refazer)")
-            return data
-        print("Cache antigo (sem metadados de edicao): consultando de novo.")
-
-    query = build_query()
-    print("Query:\n" + query)
+def post_overpass(query: str):
+    """Tenta os endpoints com retry. Devolve (json, endpoint)."""
     last_err = None
     for attempt in range(1, 4):
         for url in ENDPOINTS:
             try:
-                print(f"[{attempt}/3] {url} ...")
+                print(f"  [{attempt}/3] {url} ...")
                 r = requests.post(url, data={"data": query}, headers=HEADERS, timeout=240)
                 if r.status_code == 200:
-                    data = r.json()
-                    RAW.write_text(json.dumps(data), encoding="utf-8")
-                    return data
+                    return r.json(), url
                 last_err = f"HTTP {r.status_code}"
             except (requests.RequestException, ValueError) as e:
                 last_err = str(e)
-            print(f"  falhou: {last_err}")
+            print(f"    falhou: {last_err}")
             time.sleep(5)
         time.sleep(15 * attempt)
     sys.exit(f"Overpass indisponivel: {last_err}. Tente de novo mais tarde.")
+
+
+def fetch() -> tuple[dict, dict]:
+    """Retorna (dados, meta). Usa o cache mais recente se BBOX e HIGHWAYS forem os mesmos."""
+    DATA.mkdir(exist_ok=True)
+    files = sorted(DATA.glob(RAW_GLOB))
+    if files and not REFRESH:
+        saved = json.loads(files[-1].read_text(encoding="utf-8"))
+        meta = saved.get("meta", {})
+        if meta.get("bbox") == BBOX and meta.get("highways") == HIGHWAYS:
+            meta["cache_file"] = files[-1].name
+            print(f"Usando cache {files[-1]} (REFRESH=1 para refazer)")
+            return saved, meta
+        print("Cache de outra BBOX/HIGHWAYS: consultando de novo.")
+
+    elements, endpoints, osm_bases = {}, {}, []
+    for i, hw in enumerate(HIGHWAYS):
+        if i:
+            time.sleep(5)  # uma consulta por vez, com pausa (boa pratica do Overpass)
+        query = build_query(hw)
+        print(f"Query highway={hw}:\n{query}")
+        data, url = post_overpass(query)
+        endpoints[hw] = url
+        base = data.get("osm3s", {}).get("timestamp_osm_base", "")
+        if base:
+            osm_bases.append(base)
+        for el in data.get("elements", []):
+            elements[(el.get("type"), el.get("id"))] = el
+        print(f"  {len(data.get('elements', []))} elementos")
+
+    now = datetime.now(timezone.utc)
+    meta = {
+        "extracted_at": now.strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "osm_base": min(osm_bases) if osm_bases else "",
+        "bbox": BBOX,
+        "highways": HIGHWAYS,
+        "endpoints": endpoints,
+    }
+    saved = {"meta": meta, "elements": list(elements.values())}
+    out = DATA / f"overpass_raw_{now.strftime('%Y%m%d_%H%M%S')}.json"
+    out.write_text(json.dumps(saved), encoding="utf-8")
+    print(f"Extracao salva em {out}")
+    meta["cache_file"] = out.name
+    return saved, meta
 
 
 # ---------- 2. Geometria ----------
@@ -246,6 +283,7 @@ def merge_group(group: list[dict]) -> list[dict]:
         main = segments[0]
         t = {
             "name": ws[0]["name"],
+            "name_matches": "sim" if (NAME_RE is None or NAME_RE.search(ws[0]["name"])) else "nao",
             "n_ways": len(ws),
             "pieces_by_node": len({node_root[i] for i in idxs}),
             "segments": segments,
@@ -265,6 +303,7 @@ def merge_group(group: list[dict]) -> list[dict]:
                                     ensure_ascii=False)[:32000],
             "way_ids": ", ".join(str(w["id"]) for w in ws),
             "elev": None,
+            "elev_status": "desativada",
         }
         for k in EXTRA_TAGS:
             t[k] = ", ".join(distinct(ws, k))
@@ -349,6 +388,7 @@ def add_elevation(trails: list[dict]) -> None:
     plans, keys = {}, set()
     for idx, t in enumerate(trails):
         if t["length_km"] < MIN_KM_ELEV:
+            t["elev_status"] = "pulada"
             continue
         total = sum(line_length(s) for s in t["segments"])
         step = max(STEP_M, total / MAX_SAMPLES)
@@ -373,6 +413,7 @@ def add_elevation(trails: list[dict]) -> None:
             profile += [(offset + p[0], e) for p, e in zip(seg, sm)]
             offset += seg_len
         if not ok:
+            trails[idx]["elev_status"] = "falhou"
             continue
         k = max(1, math.ceil(len(profile) / 200))
         trails[idx]["elev"] = {
@@ -380,6 +421,7 @@ def add_elevation(trails: list[dict]) -> None:
             "min": round(min(all_el)), "max": round(max(all_el)),
             "profile": [[round(d), round(e)] for d, e in profile[::k]],
         }
+        trails[idx]["elev_status"] = "ok"
 
 
 # ---------- 5. Dificuldade e tempo ----------
@@ -426,9 +468,11 @@ def write_geojson(trails):
                          "coordinates": [[[round(p[1], 6), round(p[0], 6)] for p in s]
                                          for s in t["segments"]]},
             "properties": {"name": t["name"], "km": t["length_km"],
-                           "difficulty": t["difficulty"], "gain_m": el.get("gain"),
+                           "name_matches_regex": t["name_matches"],
+                           "elevation_status": t["elev_status"],
+                           "difficulty_calc": t["difficulty"], "gain_m": el.get("gain"),
                            "loss_m": el.get("loss"), "min_m": el.get("min"),
-                           "max_m": el.get("max"), "time": t["time"],
+                           "max_m": el.get("max"), "time_calc": t["time"],
                            "profile": el.get("profile")},
         })
     OUT_GEOJSON.write_text(json.dumps({"type": "FeatureCollection", "features": feats},
@@ -436,7 +480,7 @@ def write_geojson(trails):
 
 
 def main():
-    data = fetch()
+    data, meta = fetch()
     ways = parse_ways(data)
     print(f"{len(ways)} ways recebidos")
 
@@ -465,10 +509,16 @@ def main():
     wb = Workbook()
     write_sheet(wb, "resumo", ["metrica", "valor"], [
         ["bbox (S,O,N,L)", BBOX],
-        ["filtro de nome", NAME_REGEX or "(todos nomeados)"],
+        ["data da extracao (UTC)", meta.get("extracted_at", "")],
+        ["timestamp da base OSM (Overpass)", meta.get("osm_base", "")],
+        ["arquivo bruto usado", meta.get("cache_file", "")],
+        ["highway consultados", ", ".join(meta.get("highways", []))],
+        ["endpoints usados", ", ".join(sorted(set(meta.get("endpoints", {}).values())))],
+        ["regex de nome (so marca, nao filtra)", NAME_REGEX or "(vazio)"],
         ["tolerancia GAP_M (m)", GAP_M],
         ["ways recebidos", len(ways)],
         ["nomes distintos", len(groups)],
+        ["trilhas cujo nome bate no regex", sum(t["name_matches"] == "sim" for t in trails)],
         ["trilhas se juntar so por node compartilhado", total_pieces_node],
         ["trilhas se juntar por node + proximidade", len(trails)],
         ["juncoes extras feitas pela proximidade", total_pieces_node - len(trails)],
@@ -477,27 +527,31 @@ def main():
         ["trilhas circulares", sum(t["circular"] for t in trails)],
         ["trilhas >= 1 km", sum(t["length_km"] >= 1 for t in trails)],
         ["trilhas >= 3 km", sum(t["length_km"] >= 3 for t in trails)],
-        ["trilhas com elevacao calculada", with_elev],
-        ["dificuldade: facil", dist["facil"]],
-        ["dificuldade: moderada", dist["moderada"]],
-        ["dificuldade: dificil", dist["dificil"]],
+        ["elevacao: ok", with_elev],
+        ["elevacao: pulada (abaixo de MIN_KM_ELEV)", sum(t["elev_status"] == "pulada" for t in trails)],
+        ["elevacao: falhou", sum(t["elev_status"] == "falhou" for t in trails)],
+        ["elevacao: desativada", sum(t["elev_status"] == "desativada" for t in trails)],
+        ["dificuldade_calc: facil", dist["facil"]],
+        ["dificuldade_calc: moderada", dist["moderada"]],
+        ["dificuldade_calc: dificil", dist["dificil"]],
         ["dificuldade vinda do OSM (sac_scale)", sum(t["difficulty_source"] == "osm" for t in trails)],
     ], first=True)
 
-    headers = ["nome", "n_ways", "pedacos_por_node", "segmentos", "km", "lat_centro", "lon_centro",
-               "inicio_lat", "inicio_lon", "fim_lat", "fim_lon", "circular", "maior_lacuna_m",
-               "dificuldade", "fonte_dificuldade", "ganho_m", "perda_m", "min_m", "max_m",
-               "tempo_est", "ultima_edicao", "edicao_mais_antiga", "versao_max", "highway",
+    headers = ["nome", "nome_bate_regex", "n_ways", "pedacos_por_node", "segmentos", "km",
+               "lat_centro", "lon_centro", "inicio_lat", "inicio_lon", "fim_lat", "fim_lon",
+               "circular", "maior_lacuna_m", "dificuldade_calc", "fonte_dificuldade",
+               "elevacao_status", "ganho_m", "perda_m", "min_m", "max_m", "tempo_est_calc",
+               "ultima_edicao", "edicao_mais_antiga", "versao_max", "highway",
                *EXTRA_TAGS, "tags_json", "way_ids"]
     rows = []
     for t in trails:
         el = t["elev"] or {}
-        rows.append([t["name"], t["n_ways"], t["pieces_by_node"], t["n_segments"], t["length_km"],
-                     t["lat"], t["lon"], round(t["start"][0], 5), round(t["start"][1], 5),
+        rows.append([t["name"], t["name_matches"], t["n_ways"], t["pieces_by_node"], t["n_segments"],
+                     t["length_km"], t["lat"], t["lon"], round(t["start"][0], 5), round(t["start"][1], 5),
                      round(t["end"][0], 5), round(t["end"][1], 5),
                      "sim" if t["circular"] else "nao", t["max_gap_m"],
                      t["difficulty"], t["difficulty_source"],
-                     el.get("gain"), el.get("loss"), el.get("min"), el.get("max"),
+                     t["elev_status"], el.get("gain"), el.get("loss"), el.get("min"), el.get("max"),
                      t["time"], t["last_edit"], t["first_edit"], t["max_version"], t["highway"],
                      *[t[k] for k in EXTRA_TAGS], t["tags_json"], t["way_ids"]])
     write_sheet(wb, "trilhas", headers, rows)

@@ -17,6 +17,7 @@ O resto (limiares, fórmula de dificuldade, qualidade de cada trilha) é para o 
 ## 2. Conceitos: como o OSM organiza os dados
 
 > 💡 O OSM tem três tipos de elementos:
+>
 > - **node:** um ponto (lat/lon). Ex.: um pico, uma cachoeira.
 > - **way:** uma sequência ordenada de nodes. Ex.: um trecho de trilha, uma rua, o contorno de um parque.
 > - **relation:** um grupo de elementos com papéis. Ex.: uma rota de caminhada formada por várias ways.
@@ -25,50 +26,51 @@ O resto (limiares, fórmula de dificuldade, qualidade de cada trilha) é para o 
 
 Tags relevantes para trilhas:
 
-| Tag | Significado | Observação |
-|---|---|---|
-| `highway=path` | Caminho genérico para pedestres e bicicletas | O tipo mais comum de trilha |
-| `highway=footway` | Caminho para pedestres | Muito usado em parques urbanos (gera ruído) |
-| `highway=track` | Estrada de terra ou rural | Algumas trilhas usam |
-| `route=hiking` / `route=foot` (relação) | Rota de caminhada nomeada | Ideal, mas rara na região |
-| `name` | Nome | Essencial para virar "trilha" no catálogo |
-| `sac_scale` | Dificuldade (escala suíça SAC) | Raro aqui |
-| `trail_visibility` | Visibilidade da trilha | Raro |
-| `surface` | Superfície (`ground`, `dirt`, `rock`…) | Presente em ~60% das vias nomeadas |
-| `natural=peak` + `ele` | Pico com altitude | Útil para o RAG e o mapa |
-| `waterway=waterfall`, `tourism=viewpoint` | Cachoeira, mirante | Pontos de interesse |
-| `boundary=protected_area`, `leisure=nature_reserve` | Parques e reservas | Contexto: "trilha dentro do PE da Cantareira" |
-| `wikidata`, `wikipedia` | Links para o artigo | Ponte para o corpus do RAG |
+| Tag                                                     | Significado                                    | Observação                                  |
+| ------------------------------------------------------- | ---------------------------------------------- | --------------------------------------------- |
+| `highway=path`                                        | Caminho genérico para pedestres e bicicletas  | O tipo mais comum de trilha                   |
+| `highway=footway`                                     | Caminho para pedestres                         | Muito usado em parques urbanos (gera ruído)  |
+| `highway=track`                                       | Estrada de terra ou rural                      | Algumas trilhas usam                          |
+| `route=hiking` / `route=foot` (relação)           | Rota de caminhada nomeada                      | Ideal, mas rara na região                    |
+| `name`                                                | Nome                                           | Essencial para virar "trilha" no catálogo    |
+| `sac_scale`                                           | Dificuldade (escala suíça SAC)               | Raro aqui                                     |
+| `trail_visibility`                                    | Visibilidade da trilha                         | Raro                                          |
+| `surface`                                             | Superfície (`ground`, `dirt`, `rock`…) | Presente em ~60% das vias nomeadas            |
+| `natural=peak` + `ele`                              | Pico com altitude                              | Útil para o RAG e o mapa                     |
+| `waterway=waterfall`, `tourism=viewpoint`           | Cachoeira, mirante                             | Pontos de interesse                           |
+| `boundary=protected_area`, `leisure=nature_reserve` | Parques e reservas                             | Contexto: "trilha dentro do PE da Cantareira" |
+| `wikidata`, `wikipedia`                             | Links para o artigo                            | Ponte para o corpus do RAG                    |
 
 ## 3. O que encontramos (consultas Overpass em 2026-10-01)
 
 Retângulo consultado (sul, oeste, norte, leste): `-24.05, -47.10, -23.00, -46.20`.
 
-| Consulta | Resultado |
-|---|---|
-| Relações `route=hiking\|foot` | **10** (3 sem nome; algumas urbanas, como "Trilha do Rio Pinheiros"; uma de 58 km marcada "em análise") |
-| Vias `highway=path` com `name` | **480** |
-| Vias `path\|footway\|track` com nome contendo Trilha, Caminho, Pico, Cachoeira ou Pedra | **259** vias, **161** nomes distintos |
-| … agrupadas por nome | **64 trilhas ≥ 1 km**, **21 trilhas ≥ 3 km** |
-| Vias `path\|footway\|track` com `sac_scale` | **70** no retângulo todo (47 das 259 nomeadas) |
-| Todas as `highway=path` (sem filtro) | A consulta estourou o timeout (dezenas de milhares, a maioria sem nome) |
-| POIs e áreas protegidas | Não concluído: o servidor respondeu 504 repetidas vezes |
+| Consulta                                                                               | Resultado                                                                                                      |
+| -------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| Relações`route=hiking\|foot`                                                        | **10** (3 sem nome; algumas urbanas, como "Trilha do Rio Pinheiros"; uma de 58 km marcada "em análise") |
+| Vias`highway=path` com `name`                                                      | **480**                                                                                                  |
+| Vias`path\|footway\|track` com nome contendo Trilha, Caminho, Pico, Cachoeira ou Pedra | **259** vias, **161** nomes distintos                                                              |
+| … agrupadas por nome                                                                  | **64 trilhas ≥ 1 km**, **21 trilhas ≥ 3 km**                                                     |
+| Vias`path\|footway\|track` com `sac_scale`                                           | **70** no retângulo todo (47 das 259 nomeadas)                                                          |
+| Todas as`highway=path` (sem filtro)                                                  | A consulta estourou o timeout (dezenas de milhares, a maioria sem nome)                                        |
+| POIs e áreas protegidas                                                               | Não concluído: o servidor respondeu 504 repetidas vezes                                                      |
 
 Exemplos de trilhas montadas por agrupamento de nome (comprimento somado):
 
-| Trilha | Comprimento | Segmentos |
-|---|---|---|
-| Trilha Caucáia do Alto | 15,7 km | 4 |
-| Trilha da Cachoeira do Funil | 9,7 km | 3 |
-| Trilha Mata Dentro | 9,1 km | 2 |
-| Trilha Itaim Interparques | 9,1 km | 5 |
-| Trilha Cachoeira da Siderúrgica | 8,0 km | 1 |
-| Trilha do Vale do Rio Mogi | 5,7 km | 2 |
-| Trilha do Pai Mathias | 3,3 km | 1 |
-| Trilha para a Cachoeira da Fumaça | 3,2 km | 11 |
-| Trilha Pedra Grande | 2,5 km | 8 |
+| Trilha                             | Comprimento | Segmentos |
+| ---------------------------------- | ----------- | --------- |
+| Trilha Caucáia do Alto            | 15,7 km     | 4         |
+| Trilha da Cachoeira do Funil       | 9,7 km      | 3         |
+| Trilha Mata Dentro                 | 9,1 km      | 2         |
+| Trilha Itaim Interparques          | 9,1 km      | 5         |
+| Trilha Cachoeira da Siderúrgica   | 8,0 km      | 1         |
+| Trilha do Vale do Rio Mogi         | 5,7 km      | 2         |
+| Trilha do Pai Mathias              | 3,3 km      | 1         |
+| Trilha para a Cachoeira da Fumaça | 3,2 km      | 11        |
+| Trilha Pedra Grande                | 2,5 km      | 8         |
 
 **Conclusões:**
+
 - Relações sozinhas não sustentam um catálogo. O pipeline precisa **agrupar vias nomeadas**.
 - Nomes genéricos ("Trilha Azul", "Trilha 6 km", "Trilha de Caminhada") aparecem em lugares diferentes. Por isso o agrupamento precisa ser por **nome + proximidade**, não só por nome.
 - **Dificuldade** quase nunca vem do OSM: precisa ser calculada.
@@ -118,6 +120,7 @@ Bibliotecas úteis em TypeScript: `osmtogeojson` (resposta do Overpass para GeoJ
 ## 5. Elevação e desnível
 
 **Fonte recomendada:** [Open-Meteo Elevation API](https://open-meteo.com/en/docs/elevation-api)
+
 - Dados: Copernicus DEM GLO-90 (resolução de 90 m).
 - Até **100 coordenadas por requisição**; sem chave para uso não comercial.
 - Exige atribuição a Copernicus e Open-Meteo.
@@ -127,6 +130,7 @@ Bibliotecas úteis em TypeScript: `osmtogeojson` (resposta do Overpass para GeoJ
 **Plano B (offline, mais preciso):** baixar os tiles do Copernicus GLO-30 (30 m) da região (4 tiles de 1°×1°, disponíveis abertamente na AWS) e amostrar com a biblioteca `geotiff` em Node.
 
 **Algoritmo de desnível:**
+
 1. Amostrar pontos equidistantes ao longo da linha (`ST_LineInterpolatePoints` ou turf).
 2. Obter a elevação de cada ponto.
 3. **Suavizar** (média móvel de ~5 pontos), porque o DEM tem ruído.
@@ -146,14 +150,14 @@ Bibliotecas úteis em TypeScript: `osmtogeojson` (resposta do Overpass para GeoJ
 
 ## 7. Mapas, tiles e licenças
 
-| Item | Ponto de atenção |
-|---|---|
+| Item                                      | Ponto de atenção                                                                                                                                                                                                                                                 |
+| ----------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | Tiles do OSM (`tile.openstreetmap.org`) | [Política](https://operations.osmfoundation.org/policies/tiles/): atribuição visível "© OpenStreetMap contributors"; User-Agent e Referer válidos; **proibido** pré-carregar, raspar ou oferecer uso offline; sem SLA. Aceitável para baixo tráfego. |
-| OpenTopoMap | Visual topográfico (curvas de nível), ótimo para trilhas; CC-BY-SA; servidor comunitário (pode ficar lento) |
-| Erros de tile | Um tile bloqueado gera **erro no console** (reprova). O provedor precisa ser configurável por variável de ambiente |
-| ODbL (dados do OSM) | Atribuição obrigatória. O seed é uma "base derivada" e fica sob ODbL: declarar no README e nos Termos |
-| Wikipedia (corpus do RAG) | CC BY-SA: citar o artigo e o link na fonte da resposta |
-| Wikiloc / AllTrails | **Não usar**: os termos de uso proíbem extração |
+| OpenTopoMap                               | Visual topográfico (curvas de nível), ótimo para trilhas; CC-BY-SA; servidor comunitário (pode ficar lento)                                                                                                                                                    |
+| Erros de tile                             | Um tile bloqueado gera**erro no console** (reprova). O provedor precisa ser configurável por variável de ambiente                                                                                                                                          |
+| ODbL (dados do OSM)                       | Atribuição obrigatória. O seed é uma "base derivada" e fica sob ODbL: declarar no README e nos Termos                                                                                                                                                          |
+| Wikipedia (corpus do RAG)                 | CC BY-SA: citar o artigo e o link na fonte da resposta                                                                                                                                                                                                             |
+| Wikiloc / AllTrails                       | **Não usar**: os termos de uso proíbem extração                                                                                                                                                                                                          |
 
 ## 8. Spike da F4 no Sprint 0 (timebox: 2–3 dias)
 
@@ -168,7 +172,7 @@ Objetivo: transformar esta pesquisa em código e números reais, e entregar um *
 
 ## 9. Consultas Overpass prontas
 
-Teste em <https://overpass-turbo.eu> (visualiza no mapa) antes de usar no script.
+Teste em [https://overpass-turbo.eu](https://overpass-turbo.eu) (visualiza no mapa) antes de usar no script.
 
 ```
 // Relações de caminhada
@@ -209,10 +213,10 @@ Boas práticas com o Overpass: identificar o projeto no User-Agent; uma consulta
 
 ## Fontes
 
-- OSM Map Features: <https://wiki.openstreetmap.org/wiki/Map_features>
-- Overpass API: <https://wiki.openstreetmap.org/wiki/Overpass_API>
-- Hiking no OSM: <https://wiki.openstreetmap.org/wiki/Hiking>
-- Política de tiles: <https://operations.osmfoundation.org/policies/tiles/>
-- Copyright e ODbL: <https://www.openstreetmap.org/copyright>
-- Open-Meteo Elevation API: <https://open-meteo.com/en/docs/elevation-api>
-- Extratos Geofabrik (Brasil): <https://download.geofabrik.de/south-america/brazil.html>
+- OSM Map Features: [https://wiki.openstreetmap.org/wiki/Map_features](https://wiki.openstreetmap.org/wiki/Map_features)
+- Overpass API: [https://wiki.openstreetmap.org/wiki/Overpass_API](https://wiki.openstreetmap.org/wiki/Overpass_API)
+- Hiking no OSM: [https://wiki.openstreetmap.org/wiki/Hiking](https://wiki.openstreetmap.org/wiki/Hiking)
+- Política de tiles: [https://operations.osmfoundation.org/policies/tiles/](https://operations.osmfoundation.org/policies/tiles/)
+- Copyright e ODbL: [https://www.openstreetmap.org/copyright](https://www.openstreetmap.org/copyright)
+- Open-Meteo Elevation API: [https://open-meteo.com/en/docs/elevation-api](https://open-meteo.com/en/docs/elevation-api)
+- Extratos Geofabrik (Brasil): [https://download.geofabrik.de/south-america/brazil.html](https://download.geofabrik.de/south-america/brazil.html)
