@@ -8,3 +8,4 @@ services:
       GAP_M: "30"
       NAME_REGEX: "trilha|caminho|pico|cachoeira|pedra"
       REFRESH: "0"
+      DEM_FILE: "data/output_hh.tif"
