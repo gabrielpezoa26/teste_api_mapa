@@ -347,7 +347,7 @@ def write_sheet(wb, title, headers, rows, first=False):
         ws.column_dimensions[get_column_letter(i)].width = min(width, 50)
     ws.freeze_panes = "A2"
 
-def write_geojson(trails):
+def write_geojson_file(trails):
     feats = []
     for t in trails:
         el = t["elev"] or {}
@@ -363,7 +363,7 @@ def write_geojson(trails):
         })
     OUT_GEOJSON.write_text(json.dumps({"type": "FeatureCollection", "features": feats}, ensure_ascii=False), encoding="utf-8")
 
-def write_gpx(trails):
+def write_gpx_file(trails):
     GPX_DIR.mkdir(exist_ok=True)
     for t in trails:
         lines = [
@@ -384,19 +384,50 @@ def write_gpx(trails):
         out_file = GPX_DIR / f"{t['trilha_id']}_{RUN_DATE}.gpx"
         out_file.write_text("\n".join(lines), encoding="utf-8")
 
-def write_sqlite(trails, ways):
+def write_sqlite_file(trails, ways):
     if OUT_SQLITE.exists(): OUT_SQLITE.unlink()
     conn = sqlite3.connect(OUT_SQLITE)
     c = conn.cursor()
     
-    c.execute('''CREATE TABLE trilhas (
-        trilha_id TEXT PRIMARY KEY, nome TEXT, km_total REAL, km_principal REAL,
-        dificuldade TEXT, desnivel_m INTEGER, tempo_est TEXT, circular INTEGER, geom_geojson TEXT
-    )''')
+    base_columns = [
+        "trilha_id TEXT PRIMARY KEY",
+        "nome TEXT",
+        "nome_bate_regex TEXT",
+        "km_principal REAL",
+        "km_total REAL",
+        "n_ways INTEGER",
+        "segmentos INTEGER",
+        "inicio_lat REAL",
+        "inicio_lon REAL",
+        "fim_lat REAL",
+        "fim_lon REAL",
+        "circular TEXT",
+        "dificuldade_calc TEXT",
+        "fonte_dificuldade TEXT",
+        "elevacao_status TEXT",
+        "desnivel_acumulado REAL",
+        "ganho_m REAL",
+        "perda_m REAL",
+        "tempo_est_calc TEXT",
+        "ultima_edicao TEXT",
+        "highway TEXT"
+    ]
+    
+    # Adiciona dinamicamente as extra_tags
+    extra_columns = [f"{tag} TEXT" for tag in EXTRA_TAGS]
+    
+    # Junta tudo e mantém a geometria GeoJSON no final
+    all_columns = base_columns + extra_columns + ["geom_geojson TEXT"]
+    
+    # 2. Criação das tabelas
+    create_table_sql = f"CREATE TABLE trilhas (\n    {',\n    '.join(all_columns)}\n)"
+    c.execute(create_table_sql)
+
     c.execute('''CREATE TABLE trilha_ways (
         trilha_id TEXT, way_id INTEGER,
         FOREIGN KEY(trilha_id) REFERENCES trilhas(trilha_id)
     )''')
+    
     c.execute('''CREATE TABLE ways (
         way_id INTEGER PRIMARY KEY, nome TEXT, highway TEXT, ultima_edicao TEXT
     )''')
@@ -404,11 +435,49 @@ def write_sqlite(trails, ways):
     for w in ways:
         c.execute("INSERT OR IGNORE INTO ways VALUES (?, ?, ?, ?)", (w["id"], w["name"], w["highway"], w["timestamp"]))
     
+    # 3. Inserção dos dados
+    num_cols = len(all_columns)
+    placeholders = ", ".join(["?"] * num_cols)
+    insert_sql = f"INSERT INTO trilhas VALUES ({placeholders})"
+    
     for t in trails:
+        el = t["elev"] or {}
         geom = json.dumps({"type": "MultiLineString", "coordinates": [[[p[1], p[0]] for p in s] for s in t["segments"]]})
-        desnivel = t["elev"]["desnivel_acumulado"] if t.get("elev") else None
-        c.execute("INSERT INTO trilhas VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                  (t["trilha_id"], t["name"], t["length_km"], t["km_principal"], t["difficulty"], desnivel, t["time"], 1 if t["circular"] else 0, geom))
+        
+        # Monta a tupla de valores exatamente como na aba de trilhas do Excel
+        row = [
+            t["trilha_id"],
+            t["name"],
+            t["name_matches"],
+            t["km_principal"],
+            t["length_km"],
+            t["n_ways"],
+            t["n_segments"],
+            round(t["start"][0], 5),
+            round(t["start"][1], 5),
+            round(t["end"][0], 5),
+            round(t["end"][1], 5),
+            "sim" if t["circular"] else "nao",  # Formato texto como no Excel
+            t["difficulty"],
+            t["difficulty_source"],
+            t["elev_status"],
+            el.get("desnivel_acumulado"),
+            el.get("gain"),
+            el.get("loss"),
+            t["time"],
+            t["last_edit"],
+            t["highway"]
+        ]
+        
+        # Adiciona os valores das extra tags
+        row.extend([t[k] for k in EXTRA_TAGS])
+        
+        # Adiciona a geometria por último
+        row.append(geom)
+        
+        c.execute(insert_sql, row)
+        
+        # Popula a tabela de relacionamento
         for wid in t["way_ids_list"]:
             c.execute("INSERT INTO trilha_ways VALUES (?, ?)", (t["trilha_id"], wid))
             
@@ -468,9 +537,9 @@ def main():
         [[w["id"], w["name"], w["highway"], round(w["length_m"]), w["timestamp"]] for w in ways])
     
     wb.save(OUT_EXCEL)
-    write_geojson(trails)
-    write_gpx(trails)
-    write_sqlite(trails, ways)
+    write_geojson_file(trails)
+    write_gpx_file(trails)
+    write_sqlite_file(trails, ways)
     
     print(f"\nOK -> {OUT_EXCEL}, {OUT_GEOJSON}, e {OUT_SQLITE}")
     print(f"GPXs salvos em -> {GPX_DIR}/")

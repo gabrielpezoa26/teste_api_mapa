@@ -1,0 +1,39 @@
+DICIONARIO DE DADOS - TABELA: TRILHAS
+
+trilha_id -> [PK] Identificador único da trilha gerado pelo script (ex: TRL-123456). É baseado no menor ID dos fragmentos que a compõem.
+
+nome -> O nome da trilha cadastrado no OpenStreetMap.
+
+nome_bate_regex -> Indica se o nome contém palavras-chave típicas (como "trilha", "pico", "cachoeira"). Valores: "sim" ou "nao".
+
+km_principal -> Extensão (em Km's) do trajeto contínuo mais longo. É a "espinha dorsal" da trilha, ignorando ramificações soltas.
+
+km_total -> A soma total (em Km's) de todos os fragmentos e ramificações que compartilham o mesmo nome.
+
+n_ways -> Quantidade de Ways que o script juntou para formar a trilha.
+
+segmentos -> Quantidade de blocos contínuos após a união. Se for 1, a trilha é 100% contínua. Se for maior que 1, existem "buracos" não mapeados no meio do caminho.
+
+inicio_lat -> Latitude da primeira coordenada do trajeto principal.
+inicio_lon -> Longitude da primeira coordenada do trajeto principal.
+ 
+fim_lat -> Latitude da última coordenada do trajeto principal.
+fim_lon -> Longitude da última coordenada do trajeto principal.
+
+circular -> Retorna "sim" se o ponto final estiver a menos de 100 metros do ponto inicial.
+
+dificuldade_calc -> Classificação da trilha ("facil", "moderada", "dificil"). Baseia-se no esforço físico (distância + desnível) ou em tags do mapa.
+fonte_dificuldade -> Indica de onde veio a classificação.
+
+elevacao_status -> Informa se o cálculo de relevo deu certo ("ok") ou se houve algum problema (ex: "falhou (sem DEM)").
+
+desnivel_acumulado -> O maior valor entre o total subido e o total descido. Usado como o principal medidor de esforço vertical da trilha.
+
+ganho_m -> Soma de todas as subidas (em metros) ao longo do trajeto principal, filtrando pequenas oscilações irrelevantes.
+perda_m -> Soma de todas as descidas (em metros) ao longo do trajeto principal.
+
+tempo_est_calc -> Estimativa de quanto tempo leva para percorrer a trilha a pé (ex: "2h30"), calculada usando a distância horizontal e o desnível.
+
+ultima_edicao -> Data (timestamp) da modificação mais recente feita no OpenStreetMap em qualquer um dos pedaços dessa trilha.
+
+highway -> O tipo de via cadastrado no mapa. Geralmente será "path" (trilha), "footway" (caminho de pedestre) ou "track" (estrada de terra).
